@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpectraGrain AI v2.0 - Engineering Blueprint</title>
+    <style>
+        :root {
+            --bg-color: #F8F9FA;
+            --text-main: #1E293B;
+            --text-muted: #475569;
+            --text-light: #94A3B8;
+            --accent-blue: #2563EB;
+            --accent-emerald: #059669;
+            --border-color: #CBD5E1;
+            --panel-bg: #FFFFFF;
+            --grid-color: rgba(203, 213, 225, 0.4);
+        }
+        
+        body {
+            margin: 0; overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            color: var(--text-main); -webkit-font-smoothing: antialiased;
+        }
+
+        #canvas-container {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 1; transition: opacity 0.3s;
+        }
+
+        #ui-bar {
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; z-index: 100;
+            background: rgba(255, 255, 255, 0.85); padding: 10px; border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+            backdrop-filter: blur(12px);
+        }
+
+        .btn {
+            background: transparent; color: var(--text-muted); border: 1px solid transparent;
+            padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .btn:hover { color: var(--text-main); background: #F1F5F9; }
+        .btn.active { background: #FFFFFF; color: var(--accent-blue); border: 1px solid var(--border-color); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+
+        #title-bar { position: absolute; top: 40px; left: 50px; z-index: 90; pointer-events: none; }
+        #title-bar h1 { margin: 0; font-size: 18px; font-weight: 600; color: var(--text-main); letter-spacing: 1px; }
+        #title-bar p { margin: 4px 0 0 0; color: var(--text-muted); font-size: 12px; }
+
+        .overlay { position: absolute; z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+        .overlay.active { opacity: 1; pointer-events: auto; }
+        .label-3d {
+            position: absolute; color: var(--text-main); font-size: 11px; font-weight: 600;
+            background: #FFFFFF; border: 1px solid var(--border-color);
+            padding: 4px 8px; border-radius: 4px; pointer-events: none;
+            white-space: nowrap; transform: translate(-50%, -50%);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.2s;
+        }
+
+        /* Pointer line for new labels */
+        .label-3d::before {
+            content: ''; position: absolute; top: 100%; left: 50%;
+            width: 1px; height: 15px; background: var(--text-main);
+            transform: translateX(-50%);
+        }
+        .label-3d::after {
+            content: ''; position: absolute; top: calc(100% + 15px); left: 50%;
+            width: 4px; height: 4px; background: var(--text-main);
+            border-radius: 50%; transform: translate(-50%, -50%);
+        }
+
+        #scene5-document {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: var(--bg-color); background-image: radial-gradient(var(--grid-color) 1px, transparent 1px);
+            background-size: 24px 24px; z-index: 80; opacity: 0; pointer-events: none;
+            overflow-y: auto; overflow-x: hidden; transition: opacity 0.4s ease;
+        }
+        #scene5-document.active { opacity: 1; pointer-events: auto; }
+        
+        .doc-wrapper { max-width: 1200px; margin: 0 auto; padding: 60px 40px 120px 40px; }
+        .doc-header { border-bottom: 2px solid var(--text-main); padding-bottom: 20px; margin-bottom: 60px; }
+        .doc-header h2 { font-size: 14px; color: var(--accent-blue); letter-spacing: 2px; text-transform: uppercase; margin: 0; }
+        .doc-header h1 { font-size: 36px; color: var(--text-main); margin: 10px 0; letter-spacing: -0.5px; }
+        .doc-header p { font-family: monospace; font-size: 12px; color: var(--text-light); margin: 0; }
+
+        .doc-section {
+            background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px;
+            padding: 40px; margin-bottom: 40px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        .section-title {
+            font-size: 18px; color: var(--text-main); margin-top: 0; margin-bottom: 30px;
+            padding-bottom: 15px; border-bottom: 1px solid var(--border-color);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .section-title::after { content: 'CONFIDENTIAL'; font-family: monospace; font-size: 10px; color: var(--text-light); border: 1px solid var(--text-light); padding: 2px 6px; border-radius: 4px; }
+
+        .svg-container { width: 100%; display: flex; justify-content: center; overflow-x: auto; }
+        .svg-container svg { width: 100%; height: auto; max-height: 700px; min-width: 800px; }
+
+        .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+        .grid-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; margin-top: 30px; }
+        
+        .text-block h4 { font-size: 14px; color: var(--accent-blue); margin: 0 0 10px 0; font-family: monospace; }
+        .text-block p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0 0 20px 0; }
+
+        .svg-line { fill: none; stroke: var(--text-main); stroke-width: 1.5; stroke-linejoin: round; }
+        .svg-line-thin { fill: none; stroke: var(--text-main); stroke-width: 1; }
+        .svg-dim { fill: none; stroke: var(--accent-blue); stroke-width: 1; }
+        .svg-leader { fill: none; stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 2; }
+        .svg-text { font-family: 'Inter', sans-serif; fill: var(--text-main); font-size: 12px; }
+        .svg-text-dim { font-family: monospace; fill: var(--accent-blue); font-size: 10px; }
+        .svg-text-small { font-size: 10px; fill: var(--text-muted); font-family: 'Inter', sans-serif; }
+        .svg-text-tiny { font-size: 9px; fill: var(--text-muted); font-family: monospace; }
+        .svg-fill-white { fill: #FFFFFF; stroke: var(--text-main); stroke-width: 1.5; rx: 4;}
+        .svg-fill-gray { fill: #F1F5F9; stroke: var(--border-color); stroke-width: 1.5; rx: 2;}
+        
+        .sch-line { fill: none; stroke: var(--text-main); stroke-width: 1.5; }
+        .sch-data { stroke: var(--accent-blue); }
+        .sch-int { stroke: var(--accent-emerald); }
+        .sch-wireless { stroke: #8B5CF6; stroke-dasharray: 4 4; }
+
+        .opt-ptfe { fill: #FFFFFF; stroke: var(--border-color); }
+        .opt-bellows { fill: #1E293B; stroke: #0F172A; }
+        .opt-glass { fill: #E0F2FE; stroke: #BAE6FD; opacity: 0.8; }
+        .opt-pcb { fill: #064E3B; stroke: #047857; }
+        .opt-led { fill: #FBBF24; stroke: #D97706; }
+        .opt-ray { fill: none; stroke: #FBBF24; stroke-width: 1.5; stroke-dasharray: 4 4; }
+        .opt-sensor { fill: #1E293B; stroke: #475569; }
+
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="title-bar">
+        <h1>SpectraGrain AI v2.0</h1>
+        <p>Interactive Blueprint Viewer</p>
+    </div>
+
+    <!-- UI Overlay for Switching Scenes -->
+    <div id="ui-bar">
+        <button class="btn active" onclick="switchScene(1)">Overview</button>
+        <button class="btn" onclick="switchScene(2)">Mechanical Exploded</button>
+        <button class="btn" onclick="switchScene(3)">PCBA Layout</button>
+        <button class="btn" onclick="switchScene(4)">Optics Exploded</button>
+        <button class="btn" onclick="switchScene(5)">Master Document</button>
+    </div>
+
+    <!-- Scene 2 Labels (Exploded View) -->
+    <div id="labels-scene2" class="overlay">
+        <div id="lbl-part1" class="label-3d">Front Shell</div>
+        <div id="lbl-part2" class="label-3d">OLED Module</div>
+        <div id="lbl-part3" class="label-3d">Main PCB</div>
+        <div id="lbl-part4" class="label-3d">Battery Carriage</div>
+        <div id="lbl-part5" class="label-3d">Rear Shell with Standoffs</div>
+        <div id="lbl-part6" class="label-3d">Optics Frame</div>
+    </div>
+
+    <!-- Scene 3 Labels -->
+    <div id="labels-scene3" class="overlay">
+        <div id="lbl-esp32" class="label-3d" style="background: none; border: none; box-shadow: none;"></div>
+        <div id="lbl-as7265x" class="label-3d" style="background: none; border: none; box-shadow: none;"></div>
+        <div id="lbl-sht40" class="label-3d" style="background: none; border: none; box-shadow: none;"></div>
+        <div id="lbl-max" class="label-3d" style="background: none; border: none; box-shadow: none;"></div>
+    </div>
+
+    <!-- SCENE 5: SCROLLABLE ENGINEERING MASTER DOCUMENT -->
+    <div id="scene5-document">
+        <div class="doc-wrapper">
+            <div class="doc-header">
+                <h2>SpectraGrain AI V2.0</h2>
+                <h1>ENGINEERING MASTER DOCUMENT</h1>
+                <p>DOC-REV: 2.1.0 | STATUS: APPROVED FOR PROTOTYPING | DATE: 2026</p>
+            </div>
+
+            <!-- SECTION 1 -->
+            <section class="doc-section">
+                <h3 class="section-title">1.0 MECHANICAL & LOGIC PROCESS FLOW DIAGRAM</h3>
+                <div class="svg-container">
+                    <svg viewBox="0 0 1200 500" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <marker id="arrData" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2563EB" /></marker>
+                            <marker id="arrInt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#059669" /></marker>
+                            <marker id="arrPhoton" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#D97706" /></marker>
+                            <marker id="arrWire" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8B5CF6" /></marker>
+                        </defs>
+                        <g transform="translate(20, 20)">
+                            <rect x="0" y="20" width="160" height="60" class="svg-fill-white"/>
+                            <text x="80" y="55" class="svg-text" font-weight="bold" text-anchor="middle">LED Illumination Array</text>
+                            <path d="M 80 80 L 80 150" stroke="#FBBF24" stroke-dasharray="6 4" stroke-width="2" marker-end="url(#arrPhoton)" fill="none"/>
+                            <text x="90" y="120" class="svg-text-small" fill="#D97706">Photons</text>
+                            <rect x="0" y="150" width="160" height="60" class="svg-fill-gray"/>
+                            <text x="80" y="185" class="svg-text" font-weight="bold" text-anchor="middle">Plant Tissue / Sample</text>
+                            <path d="M 80 210 L 80 280" stroke="#FBBF24" stroke-dasharray="6 4" stroke-width="2" marker-end="url(#arrPhoton)" fill="none"/>
+                            <text x="90" y="250" class="svg-text-small" fill="#D97706">Reflected Backscatter</text>
+                            <rect x="0" y="280" width="160" height="40" class="svg-fill-white" stroke="#BAE6FD" fill="#E0F2FE"/>
+                            <text x="80" y="305" class="svg-text" font-weight="bold" text-anchor="middle">Sapphire Glass Window</text>
+
+                            <path d="M 160 300 L 250 300" stroke="#FBBF24" stroke-dasharray="6 4" stroke-width="2" marker-end="url(#arrPhoton)" fill="none"/>
+                            <rect x="250" y="250" width="200" height="100" class="svg-fill-white"/>
+                            <text x="350" y="285" class="svg-text" font-weight="bold" text-anchor="middle">AS7265x Spectral Triad</text>
+                            <rect x="270" y="300" width="160" height="30" class="svg-fill-gray"/>
+                            <text x="350" y="320" class="svg-text-small" text-anchor="middle">Internal ADC Conversion</text>
+
+                            <path d="M 450 270 L 550 270 L 550 120 L 620 120" class="sch-line sch-data" marker-end="url(#arrData)"/>
+                            <path d="M 450 290 L 530 290 L 530 140 L 620 140" class="sch-line sch-data" marker-end="url(#arrData)"/>
+                            <path d="M 450 320 L 570 320 L 570 160 L 620 160" class="sch-line sch-int" marker-end="url(#arrInt)"/>
+
+                            <text x="545" y="115" class="svg-text-tiny" fill="#2563EB" text-anchor="end">I2C SDA</text>
+                            <text x="525" y="135" class="svg-text-tiny" fill="#2563EB" text-anchor="end">I2C SCL</text>
+                            <text x="565" y="155" class="svg-text-tiny" fill="#059669" text-anchor="end">INT (GPIO10)</text>
+
+                            <rect x="620" y="10" width="300" height="360" class="svg-fill-white"/>
+                            <text x="770" y="40" class="svg-text" font-weight="bold" text-anchor="middle">ESP32-S3 Master MCU</text>
+                            <rect x="650" y="60" width="240" height="40" class="svg-fill-gray"/>
+                            <text x="770" y="85" class="svg-text-small" text-anchor="middle">Raw Spectral Array (18 Channels)</text>
+                            <path d="M 770 100 L 770 130" class="sch-line sch-data" marker-end="url(#arrData)"/>
+                            <rect x="650" y="130" width="240" height="40" class="svg-fill-gray"/>
+                            <text x="770" y="155" class="svg-text-small" text-anchor="middle">Data Normalization (SNV)</text>
+                            <path d="M 770 170 L 770 200" class="sch-line sch-data" marker-end="url(#arrData)"/>
+                            <rect x="650" y="200" width="240" height="50" class="svg-fill-gray"/>
+                            <text x="770" y="228" class="svg-text-small" text-anchor="middle" font-weight="bold">TensorFlow Lite Micro Engine</text>
+                            <path d="M 770 250 L 770 280" class="sch-line sch-data" marker-end="url(#arrData)"/>
+                            <rect x="650" y="280" width="240" height="60" class="svg-fill-gray"/>
+                            <text x="770" y="305" class="svg-text-small" text-anchor="middle">Disease Detection (Classification)</text>
+                            <text x="770" y="325" class="svg-text-small" text-anchor="middle">&amp; Brix Prediction Model (Regression)</text>
+
+                            <path d="M 920 150 L 1020 150" class="sch-line sch-data" marker-end="url(#arrData)"/>
+                            <rect x="1020" y="130" width="140" height="40" class="svg-fill-gray"/>
+                            <text x="1090" y="155" class="svg-text-small" text-anchor="middle">OLED Display Output</text>
+                            <path d="M 920 300 L 1020 300" class="sch-line sch-wireless" marker-end="url(#arrWire)"/>
+                            <text x="970" y="290" class="svg-text-tiny" fill="#8B5CF6" text-anchor="middle">BLE 5.0 GATT</text>
+                            <rect x="1020" y="280" width="140" height="40" class="svg-fill-white" stroke="#8B5CF6" stroke-width="2"/>
+                            <text x="1090" y="305" class="svg-text-small" text-anchor="middle" fill="#8B5CF6" font-weight="bold">Mobile App (BLE)</text>
+                        </g>
+                    </svg>
+                </div>
+            </section>
+
+            <!-- SECTION 2 -->
+            <section class="doc-section">
+                <h3 class="section-title">2.0 ASSEMBLED EXTERIOR BLUEPRINT</h3>
+                <div class="svg-container">
+                    <svg viewBox="0 0 1000 450" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <marker id="arrowDim" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><polygon points="0,0 10,5 0,10" fill="#2563EB" /></marker>
+                            <marker id="arrowDimRev" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><polygon points="10,0 0,5 10,10" fill="#2563EB" /></marker>
+                            <marker id="dotLeader" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4"><circle cx="5" cy="5" r="3" fill="#475569" /></marker>
+                        </defs>
+                        <g transform="translate(150, 50)">
+                            <text x="60" y="-20" class="svg-text" font-weight="bold">FRONT VIEW</text>
+                            <rect x="0" y="0" width="120" height="280" rx="20" class="svg-fill-gray"/>
+                            <rect x="15" y="20" width="90" height="60" rx="4" class="svg-fill-white"/>
+                            <circle cx="60" cy="110" r="10" class="svg-line"/>
+                            <circle cx="40" cy="140" r="8" class="svg-line"/>
+                            <circle cx="80" cy="140" r="8" class="svg-line"/>
+                            <path d="M 30 280 L 20 320 L 100 320 L 90 280 Z" class="svg-fill-white" stroke-linejoin="round"/>
+                            <line x1="25" y1="290" x2="95" y2="290" class="svg-line-thin"/>
+                            <line x1="23" y1="300" x2="97" y2="300" class="svg-line-thin"/>
+                            <line x1="21" y1="310" x2="99" y2="310" class="svg-line-thin"/>
+                            <rect x="15" y="320" width="90" height="15" rx="2" class="svg-fill-gray"/>
+                            <line x1="-20" y1="0" x2="-20" y2="280" class="svg-dim" marker-start="url(#arrowDimRev)" marker-end="url(#arrowDim)"/>
+                            <text x="-30" y="140" class="svg-text-dim" transform="rotate(-90, -30, 140)" text-anchor="middle">140 mm</text>
+                            <line x1="0" y1="350" x2="120" y2="350" class="svg-dim" marker-start="url(#arrowDimRev)" marker-end="url(#arrowDim)"/>
+                            <text x="60" y="365" class="svg-text-dim" text-anchor="middle">55 mm</text>
+                        </g>
+                        <g transform="translate(450, 50)">
+                            <text x="30" y="-20" class="svg-text" font-weight="bold">SIDE VIEW (CROSS-SECTION)</text>
+                            <path d="M 0 0 L 40 0 C 45 0 50 5 50 10 L 50 270 C 50 275 45 280 40 280 L 0 280 Z" class="svg-fill-gray"/>
+                            <path d="M 10 280 L 50 280 L 50 320 L 15 320 Z" class="svg-fill-white"/>
+                            <rect x="10" y="320" width="40" height="15" rx="2" class="svg-fill-gray"/>
+                            <line x1="45" y1="280" x2="45" y2="320" class="svg-line-thin" stroke-dasharray="2 2"/>
+                            <line x1="0" y1="350" x2="50" y2="350" class="svg-dim" marker-start="url(#arrowDimRev)" marker-end="url(#arrowDim)"/>
+                            <text x="25" y="365" class="svg-text-dim" text-anchor="middle">20 mm</text>
+                        </g>
+                        <g transform="translate(150, 50)">
+                            <polyline points="105,50 160,20 200,20" class="svg-leader" marker-start="url(#dotLeader)"/>
+                            <text x="210" y="24" class="svg-text-small">OLED 0.96" Glass Window</text>
+                            <polyline points="120,150 160,150 200,150" class="svg-leader" marker-start="url(#dotLeader)"/>
+                            <text x="210" y="154" class="svg-text-small">IP65 Polymer Composite Shell</text>
+                            <polyline points="100,300 240,300 280,300" class="svg-leader" marker-start="url(#dotLeader)"/>
+                            <text x="290" y="304" class="svg-text-small">Silicone Light-Blocking Bellows</text>
+                            <polyline points="105,327 240,327 280,327" class="svg-leader" marker-start="url(#dotLeader)"/>
+                            <text x="290" y="331" class="svg-text-small">Mechanical PTFE Flip-Cap Calibration Unit</text>
+                        </g>
+                    </svg>
+                </div>
+            </section>
+
+            <!-- SECTION 3 -->
+            <section class="doc-section">
+                <h3 class="section-title">3.0 INTERNAL PCBA & COMPONENT FUNCTION BREAKDOWN</h3>
+                <div class="grid-2col">
+                    <div class="svg-container">
+                        <svg viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="100" y="50" width="180" height="400" rx="10" fill="#064E3B" stroke="#047857" stroke-width="2"/>
+                            <rect x="250" y="60" width="40" height="30" fill="#F1F5F9" stroke="#CBD5E1"/>
+                            <rect x="160" y="450" width="60" height="30" fill="#CBD5E1" stroke="#94A3B8"/>
+                            <rect x="170" y="460" width="40" height="20" fill="#1E293B"/>
+                            <rect x="140" y="110" width="100" height="120" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1.5"/>
+                            <rect x="140" y="110" width="100" height="30" fill="#D97706" opacity="0.3"/> 
+                            <text x="190" y="190" class="svg-text" font-weight="bold" text-anchor="middle">ESP32-S3</text>
+                            <line x1="135" y1="150" x2="140" y2="150" class="svg-line" stroke="#94A3B8"/>
+                            <line x1="135" y1="160" x2="140" y2="160" class="svg-line" stroke="#94A3B8"/>
+                            <line x1="135" y1="170" x2="140" y2="170" class="svg-line" stroke="#94A3B8"/>
+                            <line x1="240" y1="150" x2="245" y2="150" class="svg-line" stroke="#94A3B8"/>
+                            <line x1="240" y1="160" x2="245" y2="160" class="svg-line" stroke="#94A3B8"/>
+                            <rect x="170" y="300" width="40" height="40" fill="#1E293B" stroke="#475569" stroke-width="1.5"/>
+                            <circle cx="190" cy="320" r="5" fill="#E0F2FE"/>
+                            <text x="190" y="355" class="svg-text-dim" text-anchor="middle">AS7265x</text>
+                            <rect x="115" y="270" width="20" height="20" fill="#1E293B"/>
+                            <text x="125" y="300" class="svg-text-dim" text-anchor="middle">SHT40</text>
+                            <rect x="245" y="220" width="25" height="25" fill="#1E293B"/>
+                            <text x="257" y="255" class="svg-text-dim" text-anchor="middle">MAX170</text>
+                            <polyline points="190,290 190,250 170,250 170,230" fill="none" stroke="#34D399" stroke-width="1.5" opacity="0.6"/>
+                            <polyline points="200,290 200,240 190,240 190,230" fill="none" stroke="#34D399" stroke-width="1.5" opacity="0.6"/>
+                        </svg>
+                    </div>
+                    <div class="text-panel">
+                        <div class="text-block">
+                            <h4>[U1] ESP32-S3 (EDGE AI MCU)</h4>
+                            <p>Acts as the master processing node. Replaces the legacy dual-MCU architecture. Responsible for reading raw I2C data, performing Spectral Normalization (SNV), executing TensorFlow Lite Micro models for regression (Brix %) and classification (Pathogen detection), and managing the BLE 5.0 GATT stack for mobile app sync.</p>
+                        </div>
+                        <div class="text-block">
+                            <h4>[U2] AS7265x SPECTRAL TRIAD</h4>
+                            <p>A highly integrated 18-channel multi-spectral sensor set ranging from 410nm to 940nm (Visible to Near-Infrared). Captures the precise optical signature of reflected photons from the crop tissue. Operates via I2C with a dedicated hardware interrupt (GPIO 10) to signal data readiness to the ESP32.</p>
+                        </div>
+                        <div class="text-block">
+                            <h4>[U3] SHT40 TEMPERATURE/HUMIDITY</h4>
+                            <p>High-accuracy environmental sensor. Spectral readings are highly sensitive to thermal fluctuations. The ESP32 uses SHT40 data to apply real-time thermal compensation algorithms to the AS7265x raw values.</p>
+                        </div>
+                        <div class="text-block">
+                            <h4>[U4] MAX17043 POWER MANAGEMENT</h4>
+                            <p>Monitors the 3.7V Li-Ion battery state-of-charge (SOC) using the ModelGauge algorithm, preventing deep discharge and managing the USB-C charging pipeline.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 4 -->
+            <section class="doc-section">
+                <h3 class="section-title">4.0 OPTICAL CHAMBER CROSS-SECTION ANALYSIS</h3>
+                <div class="svg-container">
+                    <svg viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+                        <g transform="translate(200, 50)">
+                            <rect x="150" y="20" width="100" height="20" class="opt-sensor"/>
+                            <text x="300" y="35" class="svg-text-small">LAYER 5: AS7265x Photodiode Array</text>
+                            <rect x="100" y="0" width="200" height="20" class="opt-pcb"/>
+                            <path d="M 100 40 L 150 40 L 150 140 L 100 140 Z" fill="#0F172A"/>
+                            <path d="M 300 40 L 250 40 L 250 140 L 300 140 Z" fill="#0F172A"/>
+                            <text x="320" y="90" class="svg-text-small">LAYER 4: Matte Black Optical Chamber</text>
+                            <polygon points="110,60 130,60 130,80" class="opt-led" transform="rotate(45 120 70)"/>
+                            <polygon points="290,60 270,60 270,80" class="opt-led" transform="rotate(-45 280 70)"/>
+                            <path d="M 130 80 L 190 200 L 200 40" class="opt-ray"/>
+                            <path d="M 270 80 L 210 200 L 200 40" class="opt-ray"/>
+                            <text x="210" y="110" class="svg-text-small" fill="#D97706">45°/0° Geometry</text>
+                            <rect x="150" y="140" width="100" height="10" class="opt-glass"/>
+                            <text x="320" y="150" class="svg-text-small">LAYER 3: Sapphire Glass Window</text>
+                            <path d="M 100 140 L 80 180 L 100 220 L 80 260 L 150 260 L 150 140 Z" class="opt-bellows"/>
+                            <path d="M 300 140 L 320 180 L 300 220 L 320 260 L 250 260 L 250 140 Z" class="opt-bellows"/>
+                            <text x="350" y="210" class="svg-text-small">LAYER 2: Silicone Light-Blocking Bellows</text>
+                            <rect x="150" y="240" width="100" height="10" class="opt-ptfe"/>
+                            <text x="350" y="250" class="svg-text-small">LAYER 1: White PTFE Calibration Disc</text>
+                            <rect x="130" y="260" width="140" height="20" rx="4" class="svg-fill-gray"/>
+                        </g>
+                    </svg>
+                </div>
+                <div class="text-panel grid-3col">
+                    <div class="text-block">
+                        <h4>1. 45°/0° ILLUMINATION GEOMETRY</h4>
+                        <p>Broadband LEDs are mounted strictly at a 45-degree angle within the matte black chamber. The AS7265x sensor reads directly at 0-degrees. This CIE standard geometry eliminates specular reflection (surface gloss/glare), ensuring that only the photons that penetrate the tissue and scatter back carrying chemical information are recorded.</p>
+                    </div>
+                    <div class="text-block">
+                        <h4>2. AMBIENT LIGHT ISOLATION</h4>
+                        <p>The soft silicone bellows mechanically conform to the curved surface of fruits or uneven leaves. This creates a pitch-black isolated chamber, ensuring zero interference from the sun's overwhelming infrared spectrum during field testing.</p>
+                    </div>
+                    <div class="text-block">
+                        <h4>3. PTFE AUTO-CALIBRATION</h4>
+                        <p>Before scanning, the mechanical flip-cap remains closed. Inside the cap is a Spectralon/PTFE white reference standard. The device auto-calibrates against this 99% reflective disc to compensate for LED degradation and dark current sensor drift over time.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        const canvasContainer = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xF8F9FA);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        
+        // ENABLE SHADOWS
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        canvasContainer.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.05; controls.maxPolarAngle = Math.PI / 1.5;
+
+        // LIGHTING
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dir1 = new THREE.DirectionalLight(0xffffff, 0.7); 
+        dir1.position.set(50, 100, 50); 
+        dir1.castShadow = true;
+        dir1.shadow.mapSize.width = 2048; dir1.shadow.mapSize.height = 2048;
+        dir1.shadow.bias = -0.001;
+        scene.add(dir1);
+        
+        const dir2 = new THREE.DirectionalLight(0xffffff, 0.3); 
+        dir2.position.set(-100, -50, -50); 
+        scene.add(dir2);
+
+        // MATERIALS
+        const matPolymer = new THREE.MeshPhysicalMaterial({ color: 0xF3F4F6, roughness: 0.6, clearcoat: 0.1 });
+        const matOLED = new THREE.MeshPhysicalMaterial({ color: 0x0F172A, roughness: 0.1, metalness: 0.2 });
+        const matBellows = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.9, flatShading: true });
+        
+        const matPCB = new THREE.MeshStandardMaterial({ color: 0x064E3B, roughness: 0.8, metalness: 0.1 });
+        const matICBody = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+        const matPins = new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 1.0, roughness: 0.3 });
+        const matCapacitor = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 });
+        const matResistor = new THREE.MeshStandardMaterial({ color: 0x0A0A0A, roughness: 0.9 });
+        const matUSBC = new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 0.9, roughness: 0.2 });
+        const matJST = new THREE.MeshStandardMaterial({ color: 0xFFFFF0, roughness: 0.9 });
+        const matGlass = new THREE.MeshPhysicalMaterial({ color: 0xE0F2FE, transmission: 0.9, opacity: 1, transparent: true, roughness: 0.05 });
+        const matPTFE = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 1 });
+        const matBlackChamber = new THREE.MeshStandardMaterial({ color: 0x0F172A, roughness: 1.0 });
+
+        // --- SCENE 1 : OVERVIEW ---
+        function createOverviewMesh() {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(55, 125, 20), matPolymer); group.add(body);
+            const oled = new THREE.Mesh(new THREE.BoxGeometry(38, 48, 1), matOLED); oled.position.set(0, 20, 10); group.add(oled);
+            const bellows = new THREE.Mesh(new THREE.CylinderGeometry(14, 20, 22, 32, 4), matBellows); bellows.position.set(0, -73, 0); group.add(bellows);
+            const cap = new THREE.Mesh(new THREE.CylinderGeometry(21, 21, 6, 32), matPolymer); cap.position.set(0, -87, 0); group.add(cap);
+            group.traverse(c => { if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; }});
+            return group;
+        }
+
+        // --- SCENE 2 : HORIZONTAL EXPLODED VIEW ---
+        function createExplodedMesh() {
+            const group = new THREE.Group();
+
+            const matPolymerExp = new THREE.MeshPhysicalMaterial({ color: 0xF3F4F6, roughness: 0.4, clearcoat: 0.1 });
+            const matOLEDExp = new THREE.MeshPhysicalMaterial({ color: 0x0F172A, roughness: 0.1, metalness: 0.2 });
+            const matBracket = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+            const matPCBExp = new THREE.MeshStandardMaterial({ color: 0x064E3B, roughness: 0.8, metalness: 0.1 });
+            const matESPExp = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+            const matBattery = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 });
+            const matCarriage = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+            const matBellowsExp = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.9, flatShading: true });
+            const rearDetailsMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.6 });
+
+            // Part 1: Front Shell (x = -150)
+            const p1 = new THREE.Group(); p1.position.set(-150, 0, 0);
+            const shapeFront = new THREE.Shape();
+            shapeFront.moveTo(-27.5, -62.5); shapeFront.lineTo(27.5, -62.5);
+            shapeFront.lineTo(27.5, 62.5); shapeFront.lineTo(-27.5, 62.5); shapeFront.lineTo(-27.5, -62.5);
+            const hole = new THREE.Path();
+            hole.moveTo(-19, -4); hole.lineTo(19, -4); hole.lineTo(19, 44); hole.lineTo(-19, 44); hole.lineTo(-19, -4);
+            shapeFront.holes.push(hole);
+            const frontGeo = new THREE.ExtrudeGeometry(shapeFront, { depth: 8, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 1, bevelThickness: 1 });
+            const frontMesh = new THREE.Mesh(frontGeo, matPolymerExp);
+            frontMesh.rotation.y = -Math.PI / 2; // Face -X
+            frontMesh.position.set(4, 0, 0); 
+            p1.add(frontMesh);
+            group.add(p1);
+
+            // Part 2: OLED Display & Bracket (x = -75)
+            const p2 = new THREE.Group(); p2.position.set(-75, 20, 0); 
+            const oledGlass = new THREE.Mesh(new THREE.BoxGeometry(2, 48, 38), matOLEDExp);
+            const bracket = new THREE.Mesh(new THREE.BoxGeometry(1.5, 52, 42), matBracket);
+            bracket.position.x = 1.75; 
+            p2.add(oledGlass, bracket);
+            group.add(p2);
+
+            // Part 3: Main PCBA (x = 0)
+            const p3 = new THREE.Group(); p3.position.set(0, 0, 0);
+            const pcb = new THREE.Mesh(new THREE.BoxGeometry(1.5, 115, 48), matPCBExp);
+            const esp32 = new THREE.Mesh(new THREE.BoxGeometry(2, 25, 18), matESPExp);
+            esp32.position.set(1.75, 30, 0); 
+            p3.add(pcb, esp32);
+            const ringMat = new THREE.MeshStandardMaterial({color: 0xD97706, roughness: 0.4, metalness: 0.8});
+            const ringGeo = new THREE.CylinderGeometry(2.5, 2.5, 1.6, 16);
+            const pcbCorners = [[40, 18], [-40, 18], [40, -18], [-40, -18]]; 
+            for(let pos of pcbCorners) {
+                const ring = new THREE.Mesh(ringGeo, ringMat); ring.rotation.z = Math.PI / 2; 
+                ring.position.set(0, pos[0], pos[1]); p3.add(ring);
+            }
+            group.add(p3);
+
+            // Part 4: Battery & Carriage (x = 75)
+            const p4 = new THREE.Group(); p4.position.set(75, -15, 0); 
+            const battery = new THREE.Mesh(new THREE.BoxGeometry(6, 48, 34), matBattery);
+            const carrL = new THREE.Mesh(new THREE.BoxGeometry(8, 52, 2), matCarriage); carrL.position.set(0, 0, 18);
+            const carrR = new THREE.Mesh(new THREE.BoxGeometry(8, 52, 2), matCarriage); carrR.position.set(0, 0, -18);
+            const carrT = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 38), matCarriage); carrT.position.set(0, 25, 0);
+            const carrB = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 38), matCarriage); carrB.position.set(0, -25, 0);
+            p4.add(battery, carrL, carrR, carrT, carrB);
+            group.add(p4);
+
+            // Part 5: Rear Chassis Shell (x = 150)
+            const p5 = new THREE.Group(); p5.position.set(150, 0, 0);
+            const shapeRear = new THREE.Shape();
+            shapeRear.moveTo(-27.5, -62.5); shapeRear.lineTo(27.5, -62.5);
+            shapeRear.lineTo(27.5, 62.5); shapeRear.lineTo(-27.5, 62.5); shapeRear.lineTo(-27.5, -62.5);
+            const rearGeo = new THREE.ExtrudeGeometry(shapeRear, { depth: 10, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 1, bevelThickness: 1 });
+            const rearMesh = new THREE.Mesh(rearGeo, matPolymerExp);
+            rearMesh.rotation.y = -Math.PI / 2; rearMesh.position.set(5, 0, 0); 
+            p5.add(rearMesh);
+
+            const standGeo = new THREE.CylinderGeometry(2, 2.5, 10, 16);
+            for(let pos of pcbCorners) {
+                const standoff = new THREE.Mesh(standGeo, rearDetailsMat);
+                standoff.rotation.z = Math.PI / 2; standoff.position.set(-5, pos[0], pos[1]); 
+                p5.add(standoff);
+            }
+            const ribGeo = new THREE.BoxGeometry(4, 1.5, 50); 
+            for(let ry of [-30, 0, 30]) {
+                const rib = new THREE.Mesh(ribGeo, rearDetailsMat); rib.position.set(-2, ry, 0); p5.add(rib);
+            }
+            group.add(p5);
+
+            // Part 6: Optical Sensor Frame (x = 150, y = -85)
+            const p6 = new THREE.Group(); p6.position.set(150, -85, 0);
+            const bellows = new THREE.Mesh(new THREE.CylinderGeometry(14, 20, 22, 32, 4), matBellowsExp);
+            const flipCap = new THREE.Mesh(new THREE.CylinderGeometry(21, 21, 6, 32), matPolymerExp);
+            flipCap.position.y = -14;
+            p6.add(bellows, flipCap);
+            group.add(p6);
+
+            // Assembly Guide Lines
+            const lineMat = new THREE.LineDashedMaterial({ color: 0x00E5FF, dashSize: 4, gapSize: 2, linewidth: 2 });
+            
+            const line1 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-150, 0, 0), new THREE.Vector3(150, 0, 0)]), lineMat);
+            line1.computeLineDistances(); group.add(line1);
+
+            const line2 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(150, 0, 0), new THREE.Vector3(150, -85, 0)]), lineMat);
+            line2.computeLineDistances(); group.add(line2);
+
+            const line3 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-150, 20, 0), new THREE.Vector3(-75, 20, 0)]), lineMat);
+            line3.computeLineDistances(); group.add(line3);
+
+            const line4 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -15, 0), new THREE.Vector3(75, -15, 0)]), lineMat);
+            line4.computeLineDistances(); group.add(line4);
+
+            group.traverse(c => { if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; }});
+            return group;
+        }
+
+        // --- SCENE 3 ---
+        function createSilkscreen(text, w, h, fontSize=24) {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 64;
+            const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = `bold ${fontSize}px sans-serif`; ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, canvas.width/2, canvas.height/2);
+            const tex = new THREE.CanvasTexture(canvas); tex.minFilter = THREE.LinearFilter;
+            return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+        }
+
+        function createPassive(isCapacitor) {
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 0.4), isCapacitor ? matCapacitor : matResistor);
+            const end1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.5), matPins); end1.position.x = -0.7;
+            const end2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.5), matPins); end2.position.x = 0.7;
+            group.add(body, end1, end2); return group;
+        }
+
+        function createDetailedPCBAMesh() {
+            const group = new THREE.Group();
+            const pcb = new THREE.Mesh(new THREE.BoxGeometry(48, 115, 1.5), matPCB); group.add(pcb);
+            const surfZ = 0.75; 
+
+            const espGroup = new THREE.Group(); espGroup.position.set(0, 30, surfZ + 0.8);
+            espGroup.add(new THREE.Mesh(new THREE.BoxGeometry(18, 25, 1.6), matICBody));
+            const espText = createSilkscreen("ESP32-S3", 14, 3.5, 30); espText.position.z = 0.81; espGroup.add(espText);
+            for(let i=0; i<12; i++) {
+                const pinL = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 0.3), matPins); pinL.position.set(-9.5, 10 - i*1.8, -0.6); espGroup.add(pinL);
+                const pinR = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 0.3), matPins); pinR.position.set(9.5, 10 - i*1.8, -0.6); espGroup.add(pinR);
+            }
+            for(let i=0; i<8; i++) {
+                const pinB = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.3), matPins); pinB.position.set(-6.5 + i*1.8, -13, -0.6); espGroup.add(pinB);
+            }
+            group.add(espGroup);
+
+            const triadGroup = new THREE.Group(); triadGroup.position.set(0, -35, surfZ + 0.6);
+            for(let i=0; i<3; i++) {
+                const sensor = new THREE.Mesh(new THREE.BoxGeometry(4.5, 4.5, 1.2), matICBody); sensor.position.set((i-1)*6, 0, 0);
+                for(let p=0; p<4; p++) {
+                    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.2), matPins);
+                    pin.position.set(-1.5 + p*1, 2.5, -0.5); sensor.add(pin.clone()); pin.position.y = -2.5; sensor.add(pin);
+                }
+                const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.1, 16), matGlass);
+                hole.rotation.x = Math.PI/2; hole.position.z = 0.6; sensor.add(hole); triadGroup.add(sensor);
+            }
+            const triadText = createSilkscreen("AS7265x", 14, 3, 26); triadText.position.set(0, -5, 0.61); triadGroup.add(triadText);
+            group.add(triadGroup);
+
+            const sht40 = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 0.8), matICBody); sht40.position.set(-12, -5, surfZ + 0.4);
+            const shtText = createSilkscreen("SHT40", 6, 1.5, 40); shtText.position.set(-12, -8, surfZ + 0.01); group.add(sht40, shtText);
+
+            const maxIC = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 0.8), matICBody); maxIC.position.set(12, 10, surfZ + 0.4);
+            const maxText = createSilkscreen("MAX17043", 8, 2, 35); maxText.position.set(12, 14, surfZ + 0.01); group.add(maxIC, maxText);
+
+            const usbc = new THREE.Group(); usbc.position.set(0, -56, surfZ + 1.5);
+            const usbcShell = new THREE.Mesh(new THREE.BoxGeometry(9, 6, 3), matUSBC);
+            usbcShell.add(new THREE.Mesh(new THREE.BoxGeometry(7, 4, 3.1), new THREE.MeshBasicMaterial({color:0x000000}))); usbc.add(usbcShell);
+            const usbcText = createSilkscreen("USB-C", 6, 1.5, 35); usbcText.position.set(0, -49, surfZ + 0.01); group.add(usbc, usbcText);
+
+            const jst = new THREE.Group(); jst.position.set(-15, 50, surfZ + 2.5);
+            const jstBody = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 5), matJST);
+            const jstHollow = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 3), new THREE.MeshBasicMaterial({color:0x000000})); jstHollow.position.y = 1; jstBody.add(jstHollow);
+            const jstPin1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2, 0.4), matPins); jstPin1.position.set(-1, 0, 0); jstBody.add(jstPin1);
+            const jstPin2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2, 0.4), matPins); jstPin2.position.set(1, 0, 0); jstBody.add(jstPin2);
+            jst.add(jstBody);
+            const jstText = createSilkscreen("BATT", 6, 1.5, 35); jstText.position.set(-15, 45, surfZ + 0.01); group.add(jst, jstText);
+
+            for(let i=0; i<20; i++) {
+                const smd = createPassive(Math.random() > 0.5);
+                let px = (Math.random() - 0.5) * 38; let py = (Math.random() - 0.5) * 90;
+                if(Math.abs(py - 30) < 20 && Math.abs(px) < 15) py = -15; 
+                if(Math.abs(py - -35) < 10 && Math.abs(px) < 15) py = -20; 
+                smd.position.set(px, py, surfZ + 0.2); smd.rotation.z = Math.random() > 0.5 ? 0 : Math.PI/2; group.add(smd);
+            }
+
+            const traceMat = new THREE.LineBasicMaterial({ color: 0x34D399, opacity: 0.4, transparent: true });
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -30, surfZ + 0.02), new THREE.Vector3(0, -15, surfZ + 0.02), new THREE.Vector3(12, -15, surfZ + 0.02), new THREE.Vector3(12, 10, surfZ + 0.02), new THREE.Vector3(8, 10, surfZ + 0.02)]), traceMat));
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(2, -30, surfZ + 0.02), new THREE.Vector3(2, -13, surfZ + 0.02), new THREE.Vector3(14, -13, surfZ + 0.02), new THREE.Vector3(14, 12, surfZ + 0.02), new THREE.Vector3(8, 12, surfZ + 0.02)]), traceMat));
+
+            group.traverse(c => { if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; }});
+            return group;
+        }
+
+        function createOpticalExploded() {
+            const group = new THREE.Group();
+            
+            const pcb = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 1.5, 32), matPCB); pcb.position.y = 45;
+            for(let i=0; i<3; i++) {
+                const sensor = new THREE.Mesh(new THREE.BoxGeometry(4.5, 4.5, 1.5), matICBody); sensor.position.set((i-1)*5, -1.5, 0); pcb.add(sensor);
+            }
+            group.add(pcb);
+
+            const chamber = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 16, 32), matBlackChamber); chamber.position.y = 15;
+            for(let i=0; i<4; i++) {
+                const led = new THREE.Mesh(new THREE.BoxGeometry(2,2,1), matCapacitor);
+                const angle = (i * Math.PI) / 2; led.position.set(Math.cos(angle)*10, 0, Math.sin(angle)*10);
+                led.rotation.x = Math.PI / 4;  led.rotation.y = -angle; chamber.add(led);
+            }
+            group.add(chamber);
+
+            const windowObj = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 1.5, 32), matGlass); windowObj.position.y = -5; group.add(windowObj);
+            const bellows = new THREE.Mesh(new THREE.CylinderGeometry(14, 20, 16, 32, 4), matBellows); bellows.position.y = -22; group.add(bellows);
+            const cap = new THREE.Mesh(new THREE.CylinderGeometry(21, 21, 6, 32), matPolymer); cap.position.y = -45;
+            const ptfe = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 1.5, 32), matPTFE); ptfe.position.y = 3; cap.add(ptfe);
+            group.add(cap);
+
+            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 60, 0), new THREE.Vector3(0, -60, 0)]), new THREE.LineDashedMaterial({ color: 0x9CA3AF, dashSize: 2, gapSize: 2 }));
+            line.computeLineDistances(); group.add(line);
+
+            group.traverse(c => { if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; }});
+            return group;
+        }
+
+        // --- SCENE MANAGEMENT ---
+        const scenes = {
+            1: { group: createOverviewMesh(),     camPos: new THREE.Vector3(-80, 40, 120), lookAt: new THREE.Vector3(0, 0, 0) },
+            2: { group: createExplodedMesh(),     camPos: new THREE.Vector3(-100, 80, 250), lookAt: new THREE.Vector3(0, 0, 0) },
+            3: { group: createDetailedPCBAMesh(), camPos: new THREE.Vector3(0, -30, 110),  lookAt: new THREE.Vector3(0, 0, 0) },
+            4: { group: createOpticalExploded(),  camPos: new THREE.Vector3(80, 20, 80),   lookAt: new THREE.Vector3(0, 0, 0) }
+        };
+
+        for (let key in scenes) { scenes[key].group.visible = false; scene.add(scenes[key].group); }
+
+        let currentScene = 1; let lastInteraction = Date.now();
+        let targetCamPos = scenes[1].camPos.clone(); let targetLookAt = scenes[1].lookAt.clone();
+
+        const s2Group = scenes[2].group;
+        const refP1 = new THREE.Vector3(-150, 65, 0);
+        const refP2 = new THREE.Vector3(-75, 45, 0);
+        const refP3 = new THREE.Vector3(0, 60, 0);
+        const refP4 = new THREE.Vector3(75, 10, 0);
+        const refP5 = new THREE.Vector3(150, 65, 0);
+        const refP6 = new THREE.Vector3(150, -100, 0);
+        
+        const s3Group = scenes[3].group;
+        const refESP32 = new THREE.Vector3(0, 30, 3), refTriad = new THREE.Vector3(0, -35, 3), refSHT40 = new THREE.Vector3(-12, -5, 2), refMAX = new THREE.Vector3(12, 10, 2);
+
+        function switchScene(index) {
+            currentScene = index; lastInteraction = Date.now();
+
+            document.querySelectorAll('.btn').forEach((btn, i) => {
+                if(i === index-1) btn.classList.add('active'); else btn.classList.remove('active');
+            });
+
+            if (index !== 5) {
+                for (let key in scenes) {
+                    scenes[key].group.visible = (parseInt(key) === index);
+                    scenes[key].group.rotation.set(0,0,0);
+                }
+                targetCamPos.copy(scenes[index].camPos);
+                targetLookAt.copy(scenes[index].lookAt);
+            }
+
+            document.getElementById('labels-scene2').classList.remove('active');
+            document.getElementById('labels-scene3').classList.remove('active');
+            document.getElementById('scene5-document').classList.remove('active');
+            document.getElementById('title-bar').style.opacity = '1';
+            
+            if (index === 5) {
+                document.getElementById('scene5-document').classList.add('active');
+                document.getElementById('canvas-container').style.opacity = '0';
+                document.getElementById('canvas-container').style.pointerEvents = 'none';
+                document.getElementById('title-bar').style.opacity = '0';
+            } else {
+                document.getElementById('canvas-container').style.opacity = '1';
+                document.getElementById('canvas-container').style.pointerEvents = 'auto';
+                if(index === 2) document.getElementById('labels-scene2').classList.add('active');
+                if(index === 3) document.getElementById('labels-scene3').classList.add('active');
+            }
+        }
+
+        controls.addEventListener('change', () => { lastInteraction = Date.now(); });
+
+        function updateLabels() {
+            const updatePos = (pos3D, elementId, sourceGroup) => {
+                const vector = pos3D.clone(); vector.applyMatrix4(sourceGroup.matrixWorld); vector.project(camera);
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth; const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+                const el = document.getElementById(elementId); if(el) { el.style.left = `${x}px`; el.style.top = `${y}px`; }
+            };
+            if(currentScene === 2) { 
+                updatePos(refP1, 'lbl-part1', s2Group); 
+                updatePos(refP2, 'lbl-part2', s2Group); 
+                updatePos(refP3, 'lbl-part3', s2Group); 
+                updatePos(refP4, 'lbl-part4', s2Group); 
+                updatePos(refP5, 'lbl-part5', s2Group); 
+                updatePos(refP6, 'lbl-part6', s2Group); 
+            }
+            if(currentScene === 3) { 
+                updatePos(refESP32, 'lbl-esp32', s3Group); 
+                updatePos(refTriad, 'lbl-as7265x', s3Group); 
+                updatePos(refSHT40, 'lbl-sht40', s3Group); 
+                updatePos(refMAX, 'lbl-max', s3Group); 
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (currentScene !== 5) {
+                camera.position.lerp(targetCamPos, 0.05); controls.target.lerp(targetLookAt, 0.05); controls.update();
+                if (Date.now() - lastInteraction > 4000) scenes[currentScene].group.rotation.y += 0.002;
+                updateLabels(); renderer.render(scene, camera);
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        switchScene(1); animate();
+
+    </script>
+</body>
+</html>
